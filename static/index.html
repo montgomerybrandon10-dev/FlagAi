@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0f0f1a">
+<title>FlagAI — Check for AI Signals</title>
+<link rel="manifest" href="/static/manifest.json">
+<style>
+  :root { --bg:#0f0f1a; --card:#1a1a2e; --pri:#6c5ce7; --text:#f5f6fa; --muted:#a0a0b0; --ok:#00b894; --bad:#ff6b6b; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); margin:0; }
+  header { text-align:center; padding:1.5rem 1rem 0.5rem; }
+  header h1 { margin:0; font-size:1.9rem; }
+  main { max-width:640px; margin:0 auto; padding:1rem; }
+  .card { background:var(--card); border-radius:14px; padding:1.3rem; margin-bottom:1rem; }
+  textarea, input[type=text], input[type=file] { width:100%; background:#12121f; border:1px solid #333; border-radius:10px; color:var(--text); padding:0.8rem; font-size:1rem; }
+  button { background:var(--pri); color:white; border:none; padding:0.85rem 1.2rem; border-radius:10px; font-weight:600; cursor:pointer; width:100%; margin-top:0.6rem; }
+  .row { display:flex; gap:0.5rem; }
+  .row button { width:auto; }
+  .score { font-size:2.2rem; font-weight:700; }
+  .good { color:var(--ok); } .bad { color:var(--bad); }
+  .meta { color:var(--muted); font-size:0.85rem; }
+  footer { text-align:center; padding:1.5rem; font-size:0.8rem; color:var(--muted); }
+  footer a { color:var(--pri); }
+</style>
+</head>
+<body>
+<header>
+  <h1>FlagAI</h1>
+  <p class="meta">Check text & images for AI signals</p>
+</header>
+<main>
+  <div class="card">
+    <div id="status" class="meta">Free checks remaining: —</div>
+    <textarea id="text" rows="6" placeholder="Paste text to check..."></textarea>
+    <button onclick="checkText()">Check Text</button>
+  </div>
+  <div class="card">
+    <label>Or upload an image</label>
+    <input type="file" id="img" accept="image/*">
+    <button onclick="checkImage()">Check Image</button>
+  </div>
+  <div class="card">
+    <div class="row">
+      <input type="text" id="code" placeholder="License code (FLAG-...)">
+      <button onclick="activate()">Activate</button>
+    </div>
+    <div id="codeMsg" class="meta"></div>
+  </div>
+  <div id="result" class="card" style="display:none;">
+    <div class="score" id="score">—</div>
+    <div id="verdict"></div>
+    <div id="signals" style="margin-top:0.8rem;"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Recent checks</h3>
+    <div id="history" class="meta">No history yet</div>
+  </div>
+</main>
+<footer>
+  <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a><br>
+  Scores are decision support only, not proof.
+</footer>
+<script>
+const cid = localStorage.getItem('flagai_cid') || ('u_' + Math.random().toString(36).slice(2,10));
+localStorage.setItem('flagai_cid', cid);
+async function refreshStatus() {
+  const r = await fetch('/api/me?client_id=' + cid);
+  const d = await r.json();
+  document.getElementById('status').textContent = d.paid ? 'Unlimited (licensed)' : `Free checks remaining: ${d.free_remaining}`;
+}
+refreshStatus();
+loadHistory();
+async function checkText() {
+  const text = document.getElementById('text').value.trim();
+  if (text.length < 20) return alert('Paste more text');
+  const r = await fetch('/api/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text, client_id: cid})});
+  const d = await r.json();
+  if (r.status === 402) return alert(d.detail);
+  showResult(d); refreshStatus(); loadHistory();
+}
+async function checkImage() {
+  const f = document.getElementById('img').files[0];
+  if (!f) return alert('Choose an image');
+  const fd = new FormData(); fd.append('file', f); fd.append('client_id', cid);
+  const r = await fetch('/api/analyze-image', {method:'POST', body:fd});
+  const d = await r.json(); showResult(d); loadHistory();
+}
+async function activate() {
+  const code = document.getElementById('code').value.trim();
+  const r = await fetch('/api/activate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({code, client_id: cid})});
+  const d = await r.json();
+  document.getElementById('codeMsg').textContent = r.ok ? d.message : (d.detail || 'Error');
+  if (r.ok) refreshStatus();
+}
+function showResult(d) {
+  document.getElementById('result').style.display = 'block';
+  const el = document.getElementById('score');
+  el.textContent = Math.round(d.score);
+  el.className = 'score ' + (d.score >= 50 ? 'bad' : 'good');
+  document.getElementById('verdict').textContent = d.verdict;
+  document.getElementById('signals').innerHTML = (d.signals||[]).map(s => `<div>${s.triggered ? '⚠️' : '✓'} <b>${s.name}</b> — ${s.explanation}</div>`).join('');
+}
+async function loadHistory() {
+  const r = await fetch('/api/history?client_id=' + cid);
+  const d = await r.json();
+  const h = d.history || [];
+  document.getElementById('history').innerHTML = h.length ? h.slice().reverse().map(x => `${x.type}: ${x.verdict} (${x.score})`).join('<br>') : 'No history yet';
+}
+</script>
+</body>
+</html>
