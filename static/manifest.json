@@ -1,0 +1,9 @@
+{
+  "name": "FlagAI",
+  "short_name": "FlagAI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#1a1a2e",
+  "icons": [{"src":"/static/icon-192.png","sizes":"192x192","type":"image/png"}]
+}
